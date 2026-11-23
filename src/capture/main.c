@@ -25,8 +25,9 @@ int main(void) {
         return 1;
     }
 
-    struct v4l2_format fmt = {0};
+    // Setting format & framerate
 
+    struct v4l2_format fmt = {0};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = 640;
     fmt.fmt.pix.height = 480;
@@ -50,6 +51,22 @@ int main(void) {
     printf("field:        %u (expected %u)\n", fmt.fmt.pix.field, V4L2_FIELD_NONE);
     printf("bytesperline: %u (expected 1280)\n", fmt.fmt.pix.bytesperline);
     printf("sizeimage:    %u (expected 614400)\n", fmt.fmt.pix.sizeimage);
+
+    // Requesting buffers, checking how many are received
+    struct v4l2_requestbuffers buffs = {0};
+    buffs.count = 4;
+    buffs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buffs.memory = V4L2_MEMORY_MMAP;
+
+    if (xioctl(fd, VIDIOC_REQBUFS, buffs) == -1) {
+        fprintf(stderr, "Failed to open camera (errno=%d): %s\n", errno, strerror(errno));
+        close(fd);
+        return 1;
+    }
+
+    printf("count:  %u (requested 4)\n", buffs.count);
+    printf("type:   %u (expected %u)\n", buffs.type, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+    printf("memory: %u (expected %u)\n", buffs.memory, V4L2_MEMORY_MMAP);
 
     close(fd);
     return 0;
