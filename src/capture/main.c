@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <poll.h>
+#include <stdint.h>
 
 struct buf_info {
     void *start;
@@ -139,8 +140,8 @@ int main(void) {
         if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
             perror("VIDIOC_QBUF");
 
-            for (size_t i = 0; i < buffs.count; i++) {
-                munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
+            for (size_t j = 0; j < buffs.count; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
             }
 
             close(fd);
@@ -165,37 +166,120 @@ int main(void) {
         return 1;
     }
 
-    printf("streaming on");
+    printf("streaming on\n");
 
-    struct pollfd pfd = {
-        .fd = fd,
-        .events = POLLIN
-    };
-    int r = poll(&pfd, 1, 2000); // Returns a frame as soon as one is receieved, up to 2 seconds
+    // enqueue/dequeue loop
 
-    if (r > 0 && pfd.revents & POLLIN) {
-        printf("There is a filled buffer waiting, camera is producing frames");
-    } else if (r == 0) {
-        printf("Timed out with no frame");
+    for (int i = 0; i < 200; i++) { // looping for 200 frames, placeholder for future
 
-        for (size_t i = 0; i < buffs.count; i++) {
-            munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
+        struct pollfd pfd = {
+            .fd = fd,
+            .events = POLLIN
+        };
+        int r = poll(&pfd, 1, 2000); // Returns a frame as soon as one is receieved, up to 2 seconds
+
+        if (r > 0 && pfd.revents & POLLIN) {
+            // pass through, all is well
+        } else if (r == 0) {
+            printf("Timed out with no frame\n");
+
+            for (size_t j = 0; j < buffs.count; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+
+            close(fd);
+            return 1;
+        } else {
+            perror("poll");
+
+            for (size_t j = 0; j < buffs.count; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+
+            close(fd);
+            return 1;
         }
 
-        close(fd);
-        return 1;
-    } else {
-        perror("poll");
+        struct v4l2_buffer buf = {0};
+        buf.type = buffs.type;
+        buf.memory = buffs.memory;
 
-        for (size_t i = 0; i < buffs.count; i++) {
-            munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
+        if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
+            perror("VIDIOC_DQBUF");
+
+            for (size_t j = 0; j < buffs.count; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+
+            close(fd);
+            return 1;
         }
 
-        close(fd);
-        return 1;
+        if (buf.flags & V4L2_BUF_FLAG_ERROR) {
+            if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
+                perror("VIDIOC_QBUF");
+
+                // need to stop streaming, don't care about failure since we're terminating anyways
+                xioctl(fd, VIDIOC_STREAMOFF, &buffer_type);
+                for (size_t j = 0; j < buffs.count; j++) {
+                    munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+                }
+
+                close(fd);
+                return 1;
+            }
+            continue;
+        }
+
+        // we've dequeued the buffer at this point, now we need to use the frame
+        // for now, i'll compute average brightness and write the bytes to a file
+
+        if (i >= 10) { // we only want to operate on the frames after the first 10
+            uint64_t sum = 0;
+            const uint8_t *p = (uint8_t *)dequeued_buffers[buf.index].start;
+            for (uint32_t j = 0; j < buf.bytesused; j += 2) {
+                sum += *(p + j); // equivalent to p[j], but I like this more because I can flex my pointer arithmetic knowledge
+            }
+
+            double avg = (double) sum / (buf.bytesused / 2);
+
+            printf("index %d, sequence %u, bytes used %u, avg brightness %.1f\n", i, buf.sequence, buf.bytesused, avg);
+
+            if (i == 100) { // we'll save the 100th frame to a file as a representative
+                FILE *fp = fopen("frame_100.yuv", "wb");
+
+                if (fp == NULL) {
+                    perror("failed to open file for writing");
+                } else {
+                    size_t n = fwrite(p, 1, buf.bytesused, fp);
+                    if (n != buf.bytesused) {
+                        fprintf(stderr, "short write: %zu of %u bytes\n", n, buf.bytesused);
+                    }
+
+                    fclose(fp);
+                }
+            }
+        }
+
+        if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) { // we always queue back the buffers
+            perror("VIDIOC_QBUF");
+
+            // need to stop streaming, don't care about failure since we're terminating anyways
+            xioctl(fd, VIDIOC_STREAMOFF, &buffer_type);
+            for (size_t j = 0; j < buffs.count; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+
+            close(fd);
+            return 1;
+        }
     }
 
     // teardown and completion
+
+    if (xioctl(fd, VIDIOC_STREAMOFF, &buffer_type) == -1) {
+        perror("VIDIOC_STREAMOFF");
+    }
 
     for (size_t i = 0; i < buffs.count; i++) {
         munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
