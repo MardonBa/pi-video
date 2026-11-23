@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <poll.h>
 
 struct buf_info {
     void *start;
@@ -138,7 +139,7 @@ int main(void) {
         if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
             perror("VIDIOC_QBUF");
 
-            for (size_t j = 0; j < buffs.count; j++) {
+            for (size_t i = 0; i < buffs.count; i++) {
                 munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
             }
 
@@ -148,6 +149,39 @@ int main(void) {
 
         printf("buffer %zu queued: %s\n", i, (buf.flags & V4L2_BUF_FLAG_QUEUED) ? "yes" : "no");
     }
+
+    // start streaming buffers
+
+    int buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    if (xioctl(fd, VIDIOC_STREAMON, &buffer_type) == -1) {
+        perror("VIDIOC_STREAMON");
+
+        for (size_t i = 0; i < buffs.count; i++) {
+            munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+        }
+
+        close(fd);
+        return 1;
+    }
+
+    printf("streaming on");
+
+    stuct pfd = {
+        .fd = fd,
+        .events = POLLIN
+    };
+    int r = poll(&pfd, 1, 2000); // check for events every 2 seconds
+
+    if (r > 0 && pfd.revents & POLLIN) {
+        printf("There is a filled buffer waiting, camera is producing frames");
+    } else if (r == 0) {
+        printf("Timed out with no frame");
+    } else {
+        fprintf(stderr, "Got an error, (errno=%d): %s\n", errno, strerror(errno));
+    }
+
+    // teardown and completion
 
     for (size_t i = 0; i < buffs.count; i++) {
         munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
