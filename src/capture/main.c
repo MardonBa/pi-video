@@ -69,6 +69,12 @@ int main(void) {
         return 1;
     }
 
+    if (buffs.count < 2 || buffs.count > 8) {
+        fprintf(stderr, "unexpected buffer count: %u\n", buffs.count);
+        close(fd);
+        return 1;
+    }
+
     printf("count:  %u (requested 4)\n", buffs.count);
     printf("type:   %u (expected %u)\n", buffs.type, V4L2_BUF_TYPE_VIDEO_CAPTURE);
     printf("memory: %u (expected %u)\n", buffs.memory, V4L2_MEMORY_MMAP);
@@ -90,12 +96,6 @@ int main(void) {
             // munmap removes memory mappings created by mmap
             for (size_t j = 0; j < i; j++) {
                 munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
-            }
-
-            if (dequeued_buffers->length > 8 || dequeued_buffers->length < 2) { // too many/few buffers from device
-                fprintf(stderr, "unexpected buffer count: %u\n", buffs.count);
-                close(fd);
-                return 1;
             }
 
             close(fd);
@@ -124,6 +124,27 @@ int main(void) {
         dequeued_buffers[i].length = buf.length;
 
         printf("index %zu, length %zu, offset %u\n", i, dequeued_buffers[i].length, buf.m.offset);
+    }
+
+    // queue buffers for the first frames
+
+    for (size_t i = 0; i < buffs.count; i++) {
+        struct v4l2_buffer buf = {0};
+
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index = i;
+
+        if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
+            perror("VIDIOC_QBUF");
+
+            for (size_t j = 0; j < buffs.count; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+
+            close(fd);
+            return 1;
+        }
     }
 
     for (size_t i = 0; i < buffs.count; i++) {
