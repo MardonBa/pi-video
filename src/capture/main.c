@@ -5,7 +5,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/mman.h>
 
+struct buf_info {
+    void *start;
+    size_t length;
+};
 
 static int xioctl(int fd, unsigned long request, void *arg) {
     int r;
@@ -58,8 +63,8 @@ int main(void) {
     buffs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buffs.memory = V4L2_MEMORY_MMAP;
 
-    if (xioctl(fd, VIDIOC_REQBUFS, buffs) == -1) {
-        fprintf(stderr, "Failed to open camera (errno=%d): %s\n", errno, strerror(errno));
+    if (xioctl(fd, VIDIOC_REQBUFS, &buffs) == -1) {
+        perror("VIDIOC_REQBUFS");
         close(fd);
         return 1;
     }
@@ -67,6 +72,63 @@ int main(void) {
     printf("count:  %u (requested 4)\n", buffs.count);
     printf("type:   %u (expected %u)\n", buffs.type, V4L2_BUF_TYPE_VIDEO_CAPTURE);
     printf("memory: %u (expected %u)\n", buffs.memory, V4L2_MEMORY_MMAP);
+
+    // map buffers to user address space
+
+    struct buf_info dequeued_buffers[8]; // up to 8 buffers, realistically we'll have 4 but space for more in case
+
+    for (size_t i = 0; i < buffs.count; i++) {
+        struct v4l2_buffer buf = {0};
+        buf.type = buffs.type;
+        buf.memory = buffs.memory;
+        buf.index = i;
+
+        if (xioctl(fd, VIDIOC_QUERYBUF, &buf) == -1) {
+            perror("VIDIOC_QUERYBUF");
+
+            // clears all previous buffers since we ran into an error
+            // munmap removes memory mappings created by mmap
+            for (size_t j = 0; j < i; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+
+            if (dequeued_buffers->length > 8 || dequeued_buffers->length < 2) { // too many/few buffers from device
+                fprintf(stderr, "unexpected buffer count: %u\n", buffs.count);
+                close(fd);
+                return 1;
+            }
+
+            close(fd);
+            return 1;
+        }
+
+        void *p = mmap(
+            NULL, // address, kernel will choose this
+            buf.length, // size the driver reports for the buffer (from QUERY_BUF)
+            PROT_READ | PROT_WRITE, // you can read and write
+            MAP_SHARED, // share memory with driver, so you can see what the camera writes
+            fd, // what devices the buffers are from
+            buf.m.offset // offset from querybuf (which buffer we're at)
+        );
+
+        if (p == MAP_FAILED) {
+            perror("mmap");
+            for (size_t j = 0; j < i; j++) {
+                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            }
+            close(fd);
+            return 1;
+        }
+
+        dequeued_buffers[i].start = p;
+        dequeued_buffers[i].length = buf.length;
+
+        printf("index %zu, length %zu, offset %u\n", i, dequeued_buffers[i].length, buf.m.offset);
+    }
+
+    for (size_t i = 0; i < buffs.count; i++) {
+        munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
+    }
 
     close(fd);
     return 0;
