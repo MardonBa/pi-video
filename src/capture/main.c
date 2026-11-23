@@ -167,7 +167,7 @@ int main(void) {
 
     printf("streaming on");
 
-    stuct pfd = {
+    stuct pollfd pfd = {
         .fd = fd,
         .events = POLLIN
     };
