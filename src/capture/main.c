@@ -145,6 +145,8 @@ int main(void) {
             close(fd);
             return 1;
         }
+
+        printf("buffer %zu queued: %s\n", i, (buf.flags & V4L2_BUF_FLAG_QUEUED) ? "yes" : "no");
     }
 
     for (size_t i = 0; i < buffs.count; i++) {
