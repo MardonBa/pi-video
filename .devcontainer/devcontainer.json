@@ -1,0 +1,6 @@
+{
+  "name": "pi-c-dev",
+  "build": { "dockerfile": "Dockerfile" },
+  "postCreateCommand": "echo ready",
+  "remoteUser": "vscode"
+}
