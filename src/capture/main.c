@@ -158,7 +158,7 @@ int main(void) {
         perror("VIDIOC_STREAMON");
 
         for (size_t i = 0; i < buffs.count; i++) {
-            munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+            munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
         }
 
         close(fd);
@@ -167,18 +167,32 @@ int main(void) {
 
     printf("streaming on");
 
-    stuct pollfd pfd = {
+    struct pollfd pfd = {
         .fd = fd,
         .events = POLLIN
     };
-    int r = poll(&pfd, 1, 2000); // check for events every 2 seconds
+    int r = poll(&pfd, 1, 2000); // Returns a frame as soon as one is receieved, up to 2 seconds
 
     if (r > 0 && pfd.revents & POLLIN) {
         printf("There is a filled buffer waiting, camera is producing frames");
     } else if (r == 0) {
         printf("Timed out with no frame");
+
+        for (size_t i = 0; i < buffs.count; i++) {
+            munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
+        }
+
+        close(fd);
+        return 1;
     } else {
-        fprintf(stderr, "Got an error, (errno=%d): %s\n", errno, strerror(errno));
+        perror("poll");
+
+        for (size_t i = 0; i < buffs.count; i++) {
+            munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
+        }
+
+        close(fd);
+        return 1;
     }
 
     // teardown and completion
