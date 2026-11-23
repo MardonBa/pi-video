@@ -140,7 +140,7 @@ int main(void) {
             perror("VIDIOC_QBUF");
 
             for (size_t i = 0; i < buffs.count; i++) {
-                munmap(dequeued_buffers[j].start, dequeued_buffers[j].length);
+                munmap(dequeued_buffers[i].start, dequeued_buffers[i].length);
             }
 
             close(fd);
