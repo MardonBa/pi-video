@@ -1,2 +1,2 @@
 CompileFlags:
-  Add: [-std=c11, -Wall, -Wextra, -D_GNU_SOURCE]
+  Add: [-std=c23, -Wall, -Wextra, -D_GNU_SOURCE, -xc]
