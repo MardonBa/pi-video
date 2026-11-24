@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <stdint.h>
 #include "camera.h"
+#include <stdbool.h>
 
 static int xioctl(int fd, unsigned long request, void *arg) {
     int r;
