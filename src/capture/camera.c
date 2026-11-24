@@ -21,6 +21,27 @@ static int xioctl(int fd, unsigned long request, void *arg) {
     return r;
 }
 
+
+void camera_close(camera_t *camera) {
+    if (camera == NULL) {
+        return;
+    }
+
+    if (camera->streaming) {
+        camera_off(camera);
+    }
+
+    for (size_t i = 0; i < camera->mapped; i++) {
+        munmap(camera->mapped_buffers[i].start, camera->mapped_buffers[i].length);
+    }
+
+    if (camera->fd >= 0) {
+        close(camera->fd);
+    }
+
+    free(camera);
+}
+
 /*
  * returns a pointer to the struct that contains all the information
  * relevant to later functions, or NULL if there's a failure (main should
@@ -46,8 +67,8 @@ camera_t *camera_open(const char *path, int width, int height) {
     // set format + framerate
     struct v4l2_format fmt = {0};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = 640;
-    fmt.fmt.pix.height = 480;
+    fmt.fmt.pix.width = width;
+    fmt.fmt.pix.height = height;
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
 
@@ -152,25 +173,90 @@ camera_t *camera_open(const char *path, int width, int height) {
     return camera;
 }
 
+int camera_on(camera_t *camera) {
+    int buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-void camera_close(camera_t *camera) {
-    int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-    if (camera == NULL) {
-        return;
+    if (xioctl(camera->fd, VIDIOC_STREAMON, &buffer_type) == -1) {
+        perror("VIDIOC_STREAMON");
+        return -1;
     }
 
-    if (camera->streaming) {
-        xioctl(camera->fd, VIDIOC_STREAMOFF, &type);
+    printf("streaming on\n");
+    camera->streaming = true;
+
+    return 0;
+}
+
+int camera_off(camera_t *camera) {
+    int buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    if (xioctl(camera->fd, VIDIOC_STREAMOFF, &buffer_type) == -1) {
+        perror("VIDIOC_STREAMOFF");
+        return -1;
     }
 
-    for (size_t i = 0; i < camera->mapped; i++) {
-        munmap(camera->mapped_buffers[i].start, camera->mapped_buffers[i].length);
+    printf("streaming off\n");
+    camera->streaming = false;
+
+    return 0;
+}
+
+int camera_get_frame(camera_t *camera, frame_t *frame) {
+
+    struct v4l2_buffer buf = {0};
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+
+    for (;;) {
+        memset(&buf, 0, sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+
+        struct pollfd pfd = {
+            .fd = camera->fd,
+            .events = POLLIN
+        };
+        int r = poll(&pfd, 1, 2000); // Returns a frame as soon as one is receieved, up to 2 seconds
+
+        if (r == 0) {
+            printf("Timed out with no frame\n");
+            return -1;
+        } else if (r < 0) {
+            perror("poll");
+            return -1;
+        }
+
+        // if we get here, all is well
+
+        if (xioctl(camera->fd, VIDIOC_DQBUF, &buf) == -1) {
+            perror("VIDIOC_DQBUF");
+            return -1;
+        }
+
+        if (buf.flags & V4L2_BUF_FLAG_ERROR) {
+            if (xioctl(camera->fd, VIDIOC_QBUF, &buf) == -1) {
+                perror("VIDIOC_QBUF");
+                return -1;
+            }
+            continue;
+        } else {
+            break;
+        }
     }
 
-    if (camera->fd >= 0) {
-        close(camera->fd);
+    if (buf.index < camera->mapped && buf.bytesused <= frame->capacity) {
+        memcpy(frame->data, camera->mapped_buffers[buf.index].start, buf.bytesused);
+        frame->bytesize = buf.bytesused;
+        frame->sequence = buf.sequence;
+        frame->timestamp = (uint64_t)buf.timestamp.tv_sec * 1000000 + buf.timestamp.tv_usec;
+    } else {
+        return -1;
     }
 
-    free(camera);
+    if (xioctl(camera->fd, VIDIOC_QBUF, &buf) == -1) { // we always queue back the buffers
+        perror("VIDIOC_QBUF");
+        return -1;
+    }
+
+    return 0;
 }
