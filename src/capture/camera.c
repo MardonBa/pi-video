@@ -244,6 +244,17 @@ int camera_get_frame(camera_t *camera, frame_t *frame) {
         }
     }
 
+    uint64_t sum = 0;
+    const uint8_t *p = (uint8_t *)frame.data;
+    for (size_t j = 0; j < frame.bytesize; j += 2) {
+        sum += *(p + j); // equivalent to p[j], but I like this more because I can flex my pointer arithmetic knowledge
+    }
+
+    double avg = (double) sum / (frame.bytesize / 2);
+
+    printf("index %d, sequence %u, bytes used %zu, avg brightness %.1f, stride %d, timestamp %" PRIu64 " us\n",
+           i, frame.sequence, frame.bytesize, avg, frame.stride, frame.timestamp);
+
     if (buf.index < camera->mapped && buf.bytesused <= frame->capacity) {
         memcpy(frame->data, camera->mapped_buffers[buf.index].start, buf.bytesused);
         frame->bytesize = buf.bytesused;
