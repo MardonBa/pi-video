@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include "camera.h"
 #include <stdbool.h>
-
+#include <inttypes.h>
 
 int main(void) {
     camera_t *camera = camera_open("/dev/video0", 640, 480);
@@ -53,8 +53,8 @@ int main(void) {
 
         double avg = (double) sum / (frame.bytesize / 2);
 
-        printf("index %d, sequence %u, bytes used %zu, avg brightness %.1f, stride %d, timestamp %f\n", i, frame.sequence, frame.bytesize, avg, frame.stride, frame.timestamp);
-
+        printf("index %d, sequence %u, bytes used %zu, avg brightness %.1f, stride %d, timestamp %" PRIu64 " us\n",
+               i, frame.sequence, frame.bytesize, avg, frame.stride, frame.timestamp);
         if (i == 100) {
             FILE *fp = fopen("frame_100.yuv", "wb");
 
