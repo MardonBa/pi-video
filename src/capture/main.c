@@ -40,7 +40,7 @@ int main(void) {
     frame.stride = camera->fmt.stride;
 
     for (int i = 0; i < 200; i++) { // looping for 200 frames, placeholder for future
-        if (camera_get_frame(camera, frame) == -1) {
+        if (camera_get_frame(camera, &frame) == -1) {
             free(frame.data);
             camera_close(camera);
             return 1;
