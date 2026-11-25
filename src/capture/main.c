@@ -19,6 +19,11 @@ int main(void) {
         return 1;
     }
 
+    if (camera_list_controls(camera) == -1) {
+        camera_close(camera);
+        return 1;
+    }
+
     // enqueue/dequeue loop
     frame_t frame = {0};
     frame.pixel_format = PIX_YUYV; // currently known

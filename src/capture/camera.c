@@ -1,3 +1,5 @@
+#include <asm-generic/errno-base.h>
+#include <bits/types.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -266,6 +268,58 @@ int camera_get_frame(camera_t *camera, frame_t *frame) {
 
     if (xioctl(camera->fd, VIDIOC_QBUF, &buf) == -1) { // we always queue back the buffers
         perror("VIDIOC_QBUF");
+        return -1;
+    }
+
+    return 0;
+}
+
+static const char *ctrl_type_name(__u32 type) {
+    switch (type) {
+        case V4L2_CTRL_TYPE_INTEGER:      return "integer";
+        case V4L2_CTRL_TYPE_BOOLEAN:      return "boolean";
+        case V4L2_CTRL_TYPE_MENU:         return "menu";
+        case V4L2_CTRL_TYPE_BUTTON:       return "button";
+        case V4L2_CTRL_TYPE_INTEGER64:    return "integer64";
+        case V4L2_CTRL_TYPE_CTRL_CLASS:   return "class";
+        case V4L2_CTRL_TYPE_STRING:       return "string";
+        case V4L2_CTRL_TYPE_BITMASK:      return "bitmask";
+        case V4L2_CTRL_TYPE_INTEGER_MENU: return "int menu";
+        default:                          return "other";
+    }
+}
+
+int camera_list_controls(camera_t *camera) {
+    struct v4l2_queryctrl qc = {0};
+    qc.id = V4L2_CTRL_FLAG_NEXT_CTRL;
+
+    while (xioctl(camera->fd, VIDIOC_QUERYCTRL, &qc) == 0) {
+        // handle control, skip if disabeld (check flag)
+        // list menu entries if it's a menu
+        __u32 flag = qc.flags;
+
+        if (flag & V4L2_CTRL_FLAG_DISABLED) {
+            printf("control disabled, skipping");
+        } else { // for now we don't care about the other flags other than that they are set
+            printf("0x%08x %-32s %-9s min=%d max=%d step=%d default=%d flags=0x%x",
+                       qc.id, (const char *)qc.name, ctrl_type_name(qc.type),
+                       qc.minimum, qc.maximum, qc.step, qc.default_value, qc.flags);
+
+            if (qc.flags & V4L2_CTRL_FLAG_GRABBED)    printf(" grabbed");
+            if (qc.flags & V4L2_CTRL_FLAG_READ_ONLY)  printf(" read-only");
+            if (qc.flags & V4L2_CTRL_FLAG_UPDATE)     printf(" update");
+            if (qc.flags & V4L2_CTRL_FLAG_INACTIVE)   printf(" inactive");
+            if (qc.flags & V4L2_CTRL_FLAG_SLIDER)     printf(" slider");
+            if (qc.flags & V4L2_CTRL_FLAG_WRITE_ONLY) printf(" write-only");
+            if (qc.flags & V4L2_CTRL_FLAG_VOLATILE)   printf(" volatile");
+            printf("\n");
+        }
+
+        qc.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+    }
+
+    if (errno != EINVAL) {
+        perror("VIDIOC_QUERYCTRL");
         return -1;
     }
 

@@ -51,3 +51,5 @@ int camera_on(camera_t *camera);
 int camera_off(camera_t *camera);
 
 int camera_get_frame(camera_t *camera, frame_t *frame);
+
+int camera_list_controls(camera_t *camera);
