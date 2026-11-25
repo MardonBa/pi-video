@@ -53,7 +53,7 @@ int main(void) {
 
         double avg = (double) sum / (frame.bytesize / 2);
 
-        printf("index %d, sequence %u, bytes used %zu, avg brightness %.1f\n", i, frame.sequence, frame.bytesize, avg);
+        printf("index %d, sequence %u, bytes used %zu, avg brightness %.1f, stride %d, timestamp %f\n", i, frame.sequence, frame.bytesize, avg, frame.stride, frame.timestamp);
 
         if (i == 100) {
             FILE *fp = fopen("frame_100.yuv", "wb");
