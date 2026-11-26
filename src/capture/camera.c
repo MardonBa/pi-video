@@ -318,16 +318,13 @@ int camera_list_controls(camera_t *camera) {
             if (qc.flags & V4L2_CTRL_FLAG_HAS_WHICH_MIN_MAX)    printf(" has min-max");
             printf("\n");
 
-            if (qc.id == V4L2_CID_BRIGHTNESS) {
-                camera_get_control(camera, qc.id, qc.);
-            }
-
             int value;
             if (camera_get_control(camera, qc.id, &value) == 0) {
                 printf("  current value: %d\n", value);
             }
 
         qc.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+        }
     }
 
     if (errno != EINVAL) {
