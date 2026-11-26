@@ -278,6 +278,20 @@ static const char *ctrl_type_name(__u32 type) {
     }
 }
 
+static int camera_get_control(camera_t *camera, __u32 id, int *value) {
+    struct v4l2_control ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
+    ctrl.id = id;
+
+    if (xioctl(camera->fd, VIDIOC_G_CTRL, &ctrl) == -1) {
+        perror("VIDIOC_G_CTRL failed");
+        return -1;
+    }
+
+    *value = ctrl.value;
+    return 0;
+}
+
 int camera_list_controls(camera_t *camera) {
     struct v4l2_queryctrl qc = {0};
     qc.id = V4L2_CTRL_FLAG_NEXT_CTRL;
@@ -294,15 +308,24 @@ int camera_list_controls(camera_t *camera) {
                        qc.id, (const char *)qc.name, ctrl_type_name(qc.type),
                        qc.minimum, qc.maximum, qc.step, qc.default_value, qc.flags);
 
-            if (qc.flags & V4L2_CTRL_FLAG_GRABBED)    printf(" grabbed");
-            if (qc.flags & V4L2_CTRL_FLAG_READ_ONLY)  printf(" read-only");
-            if (qc.flags & V4L2_CTRL_FLAG_UPDATE)     printf(" update");
-            if (qc.flags & V4L2_CTRL_FLAG_INACTIVE)   printf(" inactive");
-            if (qc.flags & V4L2_CTRL_FLAG_SLIDER)     printf(" slider");
-            if (qc.flags & V4L2_CTRL_FLAG_WRITE_ONLY) printf(" write-only");
-            if (qc.flags & V4L2_CTRL_FLAG_VOLATILE)   printf(" volatile");
+            if (qc.flags & V4L2_CTRL_FLAG_GRABBED)              printf(" grabbed");
+            if (qc.flags & V4L2_CTRL_FLAG_READ_ONLY)            printf(" read-only");
+            if (qc.flags & V4L2_CTRL_FLAG_UPDATE)               printf(" update");
+            if (qc.flags & V4L2_CTRL_FLAG_INACTIVE)             printf(" inactive");
+            if (qc.flags & V4L2_CTRL_FLAG_SLIDER)               printf(" slider");
+            if (qc.flags & V4L2_CTRL_FLAG_WRITE_ONLY)           printf(" write-only");
+            if (qc.flags & V4L2_CTRL_FLAG_VOLATILE)             printf(" volatile");
+            if (qc.flags & V4L2_CTRL_FLAG_HAS_WHICH_MIN_MAX)    printf(" has min-max");
             printf("\n");
-        }
+
+            if (qc.id == V4L2_CID_BRIGHTNESS) {
+                camera_get_control(camera, qc.id, qc.);
+            }
+
+            int value;
+            if (camera_get_control(camera, qc.id, &value) == 0) {
+                printf("  current value: %d\n", value);
+            }
 
         qc.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
     }
